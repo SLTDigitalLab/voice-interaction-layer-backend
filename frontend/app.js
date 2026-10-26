@@ -650,10 +650,15 @@ window.addEventListener("mousemove", (event) => {
 });
 
 function setStatus(state) {
+  const allowSpeakerBargeIn = localStorage.getItem("bargeInHeadphones") === "true";
+  if (state === "listening" && !audioSendAllowed) {
+    sendBuffer = new Float32Array(0);
+    resampleRemainder = new Float32Array(0);
+  }
   audioSendAllowed =
     state === "listening" ||
     state === "calibrating" ||
-    (state === "speaking" && bargeInReady && !bargeInBlocked && Boolean(socket) && !livekitSession && !liveSession);
+    (allowSpeakerBargeIn && state === "speaking" && bargeInReady && !bargeInBlocked && Boolean(socket) && !livekitSession && !liveSession);
   // Drives the flat CSS avatar's mouth/ring/waveform styling (see style.css's
   // .bot.state-* rules) by replacing only the state-* class, so the has-3d
   // class bot3d.js adds (see bot3d.js) survives every status change.

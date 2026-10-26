@@ -886,7 +886,13 @@ async def _speak_streamed_reply(
     monitor = None
     if detector is not None:
         monitor = asyncio.ensure_future(
-            _watch_for_barge_in(websocket, detector, announcer, barge.get("voice_holder"))
+            _watch_for_barge_in(
+                websocket,
+                detector,
+                announcer,
+                barge.get("voice_holder"),
+                ignore_mic=bool(barge.get("ignore_mic", False)),
+            )
         )
 
     agent_start = time.time()
@@ -973,7 +979,13 @@ def _barge_in_available(vad) -> bool:
     return vad is not None and hasattr(vad, "_vad") and hasattr(vad, "noise_floor_rms")
 
 
-async def _watch_for_barge_in(websocket: WebSocket, detector, announcer, voice_holder: Optional[dict]):
+async def _watch_for_barge_in(
+    websocket: WebSocket,
+    detector,
+    announcer,
+    voice_holder: Optional[dict],
+    ignore_mic: bool = False,
+):
     """Reads the microphone chunks the page keeps sending while the reply is
     spoken. Returns ("barge", seed_audio) when the user really started talking,
     or ("ended", None) when the client ended the session or the socket closed.
@@ -986,7 +998,7 @@ async def _watch_for_barge_in(websocket: WebSocket, detector, announcer, voice_h
                 return "ended", None
             data = message.get("bytes")
             if data is not None:
-                if announcer.first_audio_at is None:
+                if ignore_mic or announcer.first_audio_at is None:
                     continue
                 if not armed:
                     detector.reset()
@@ -1167,7 +1179,11 @@ async def voice_ws(websocket: WebSocket):
                 continue
 
             await _send_json(websocket, {"type": "status", "state": "thinking"})
-            barge = {"vad": vad, "voice_holder": voice_holder}
+            barge = {
+                "vad": vad,
+                "voice_holder": voice_holder,
+                "ignore_mic": not config.VOICE_WS_BARGE_IN,
+            }
             reply_text, agent_time, first_audio_at = await _speak_streamed_reply(
                 websocket, final_text, user_name, reply_language, voice_holder["voice_style"], access_context, barge
             )
