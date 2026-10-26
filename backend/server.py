@@ -536,7 +536,16 @@ def _sounds_negative(text: str) -> bool:
 
 
 async def _send_json(websocket: WebSocket, payload: dict):
-    await websocket.send_text(json.dumps(payload))
+    try:
+        await websocket.send_text(json.dumps(payload))
+    except Exception as exc:
+        if (
+            isinstance(exc, WebSocketDisconnect)
+            or "WebSocketDisconnect" in type(exc).__name__
+            or isinstance(exc, RuntimeError)
+        ):
+            raise WebSocketDisconnect() from exc
+        raise
 
 
 class _ChunkQueueSource:
