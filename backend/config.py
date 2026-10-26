@@ -90,12 +90,9 @@ def _env_bool(name: str, default: bool) -> bool:
     return value in ("1", "true", "yes")
 
 
-# On /ws/voice, TTS plays through Python sounddevice directly on the host's
-# speakers rather than through the browser's audio engine, so the browser's
-# WebRTC Acoustic Echo Cancellation has no reference signal. Keep speaker
-# barge-in off by default on /ws/voice unless headphones are used
-# (VOICE_WS_BARGE_IN=true).
-VOICE_WS_BARGE_IN = _env_bool("VOICE_WS_BARGE_IN", False)
+# On /ws/voice, barge-in is enabled by default. To disable interruption on
+# open speakers if needed, set VOICE_WS_BARGE_IN=false.
+VOICE_WS_BARGE_IN = _env_bool("VOICE_WS_BARGE_IN", True)
 
 
 def _env_int(name: str, default: int) -> int:

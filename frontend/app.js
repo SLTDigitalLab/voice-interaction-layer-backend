@@ -650,7 +650,7 @@ window.addEventListener("mousemove", (event) => {
 });
 
 function setStatus(state) {
-  const allowSpeakerBargeIn = localStorage.getItem("bargeInHeadphones") === "true";
+  const allowSpeakerBargeIn = localStorage.getItem("bargeInHeadphones") !== "false";
   if (state === "listening" && !audioSendAllowed) {
     sendBuffer = new Float32Array(0);
     resampleRemainder = new Float32Array(0);
