@@ -175,10 +175,12 @@ def _current_cancel() -> Optional[threading.Event]:
 
 def _play(data, samplerate) -> None:
     import sounddevice as sd
+    from vad import echo_reference
 
     cancel = _current_cancel()
     if cancel is not None and cancel.is_set():
         return
+    echo_reference.start_clip(data, samplerate)
     sd.play(data, samplerate)
     if cancel is None:
         sd.wait()
@@ -191,6 +193,7 @@ def _play(data, samplerate) -> None:
     while time.monotonic() < deadline:
         if cancel.wait(_CANCEL_POLL_SECONDS):
             sd.stop()  # flushes what sounddevice still holds for this clip
+            echo_reference.stop_clip()
             return
     sd.wait()
 
@@ -219,6 +222,7 @@ def _play_pcm_stream(first_chunk: bytes, chunks: "queue.Queue", samplerate: int)
     an exception, if the stream broke part way). Leaving the with block
     waits for the buffered audio to finish playing."""
     import sounddevice as sd
+    from vad import echo_reference
 
     leftover = b""
     cancel = _current_cancel()
@@ -227,6 +231,7 @@ def _play_pcm_stream(first_chunk: bytes, chunks: "queue.Queue", samplerate: int)
         while item is not None:
             if cancel is not None and cancel.is_set():
                 out.abort()  # drops the buffered audio instead of draining it
+                echo_reference.stop_clip()
                 break
             if isinstance(item, Exception):
                 print(f"TTS: Google stream broke part way ({item}).")
@@ -238,8 +243,11 @@ def _play_pcm_stream(first_chunk: bytes, chunks: "queue.Queue", samplerate: int)
                 step = 4800
                 for start in range(0, usable, step):
                     if cancel is not None and cancel.is_set():
+                        echo_reference.stop_clip()
                         break
-                    out.write(data[start : min(start + step, usable)])
+                    piece = data[start : min(start + step, usable)]
+                    echo_reference.feed_stream_pcm16(piece, samplerate)
+                    out.write(piece)
             leftover = data[usable:]
             while True:
                 try:

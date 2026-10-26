@@ -427,3 +427,95 @@ def test_real_player_without_cancel_behaves_as_before(monkeypatch):
     tts.speak_stream(["a.", "b."], "en", "female_natural")
     assert fake_sd.clips == [0.1, 0.1]
     assert fake_sd.stop_calls == 0
+
+
+# ----------------------------------------------- AEC & Double-Talk Mode Tests
+
+
+def test_aec_headphones_mode_instant_interruption():
+    """Headphones: TTS reference is actively playing in the headphones, but no
+    speaker audio leaks into the mic. The user's speech must trigger immediately."""
+    from vad import BargeInDetector, EchoReference
+
+    echo_ref = EchoReference()
+    echo_ref.start_clip(voiced(6.0, level=0.20, f0=185.0), SR)
+
+    detector = BargeInDetector(calibrated_vad(), echo_ref=echo_ref)
+    lead = noise(0.5, AMBIENT)
+    user_speech = voiced(2.0, level=0.12, f0=140.0)
+    signal = np.concatenate([lead, user_speech])
+
+    at, seed = feed_in_chunks(detector, signal)
+    assert at is not None, "Human speech in headphone mode must trigger barge-in"
+    latency = at - lead.size / SR
+    print(f"Headphones mode trigger latency: {latency * 1000:.0f} ms")
+    assert latency <= 0.6
+    assert seed is not None and seed.size >= int(0.4 * SR)
+    seed_rms = float(np.sqrt(np.mean(seed[int(0.2 * SR) :] ** 2)))
+    assert seed_rms > 0.06, "Human voice in seed must remain clean and audible"
+
+
+def test_aec_open_laptop_speakers_echo_alone_never_triggers():
+    """Open Laptop Speakers: TTS is playing out loud. Mic picks up delayed,
+    room-reflected, distorted speaker audio at loud levels (RMS ~0.13, 26x noise floor).
+    AEC must cancel it so it never self-triggers."""
+    from vad import BargeInDetector, EchoReference
+
+    echo_ref = EchoReference()
+    ref = voiced(10.0, level=0.22, f0=185.0)
+    echo_ref.start_clip(ref, SR)
+
+    # Simulate open laptop speaker acoustics: 180 ms delay + 64-tap room filter + nonlinearity
+    delay = int(0.18 * SR)
+    rir = np.zeros(64, dtype=np.float32)
+    rir[0], rir[3], rir[11], rir[25] = 0.65, -0.32, 0.22, -0.15
+    echo_conv = np.convolve(np.tanh(1.3 * ref) / 1.3, rir, mode="full")[: ref.size]
+    echo_conv = (echo_conv / np.sqrt(np.mean(echo_conv**2)) * 0.13).astype(np.float32)
+
+    mic_echo = np.zeros_like(ref)
+    mic_echo[delay:] = echo_conv[:-delay]
+
+    detector = BargeInDetector(calibrated_vad(), echo_ref=echo_ref)
+    at, _ = feed_in_chunks(detector, mic_echo[: int(8.0 * SR)])
+    assert at is None, "Loud open laptop speaker echo alone must never trigger barge-in"
+
+
+def test_aec_open_laptop_speakers_double_talk_cuts_off_and_returns_clean_seed():
+    """Open Laptop Speakers (Double-Talk): TTS is playing loudly. Speaker echo runs
+    alone for 1.0s without triggering, then the human talks over the speaker.
+    AEC must immediately detect double-talk, trigger barge-in, and return clean seed audio."""
+    from vad import BargeInDetector, EchoReference
+
+    echo_ref = EchoReference()
+    ref = voiced(10.0, level=0.22, f0=185.0)
+    echo_ref.start_clip(ref, SR)
+
+    delay = int(0.18 * SR)
+    rir = np.zeros(64, dtype=np.float32)
+    rir[0], rir[3], rir[11], rir[25] = 0.65, -0.32, 0.22, -0.15
+    echo_conv = np.convolve(np.tanh(1.3 * ref) / 1.3, rir, mode="full")[: ref.size]
+    echo_conv = (echo_conv / np.sqrt(np.mean(echo_conv**2)) * 0.12).astype(np.float32)
+
+    mic_echo = np.zeros_like(ref)
+    mic_echo[delay:] = echo_conv[:-delay]
+
+    # Human starts speaking at t = 1.0s over the ongoing loud speaker echo
+    lead_s = 1.0
+    human_s = 3.0
+    human = voiced(human_s, level=0.12, f0=140.0)
+
+    mic_signal = mic_echo[: int((lead_s + human_s) * SR)].copy()
+    lead_samples = int(lead_s * SR)
+    mic_signal[lead_samples : lead_samples + human.size] += human
+
+    detector = BargeInDetector(calibrated_vad(), echo_ref=echo_ref)
+    at, seed = feed_in_chunks(detector, mic_signal)
+
+    assert at is not None, "Human talking over open laptop speakers must trigger barge-in"
+    latency = at - lead_s
+    print(f"Open speakers double-talk trigger latency: {latency * 1000:.0f} ms")
+    assert 0.0 <= latency <= 0.6, "Double-talk must trigger promptly"
+    assert seed is not None and seed.size >= int(0.4 * SR)
+    seed_rms = float(np.sqrt(np.mean(seed[int(0.2 * SR) :] ** 2)))
+    assert seed_rms > 0.05, "Seed audio must preserve the human voice"
+
