@@ -57,7 +57,9 @@ class VoiceActivityDetector:
         rms = float(np.sqrt(np.mean(np.square(sample_audio))))
         # Speech must clear ambient noise by a margin, not just cross zero,
         # otherwise a noisy room re-triggers on its own background level.
-        self.noise_floor_rms = max(rms * 2.5, 0.003)
+        # Capped at 0.035 so speaking during the 1 s calibration window cannot
+        # set an unreachable threshold for the rest of the call.
+        self.noise_floor_rms = min(max(rms * 2.5, 0.003), 0.035)
         self.calibrated = True
         return self.noise_floor_rms
 
@@ -97,8 +99,8 @@ class VoiceActivityDetector:
 # the normal end of speech detection: a frame must be well above the calibrated
 # floor (the floor is already 2.5x the room's own level) and the speech must run
 # for a while before anything is cut off.
-BARGE_ENERGY_MARGIN = 2.0  # frame RMS must be this many times the calibrated floor
-BARGE_MIN_RMS = 0.02  # and never below this absolute level (a quiet room has a tiny floor)
+BARGE_ENERGY_MARGIN = 3.0  # frame RMS must be this many times the calibrated floor
+BARGE_MIN_RMS = 0.055  # and never below this absolute level (prevents laptop speaker echo self-barge-in)
 BARGE_CONFIRM_MS = 300  # continuous speech needed before the reply is cut off
 BARGE_GAP_FRAMES = 3  # up to 90 ms of quiet inside a word does not restart the count
 BARGE_PREROLL_MS = 150  # audio kept from before the first speech frame

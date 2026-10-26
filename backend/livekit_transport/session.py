@@ -121,6 +121,8 @@ class SessionSettings:
     # The call moved here from another voice tier (voice_router): say the notice, not the introduction.
     handover: bool = False
     participant_identity: Optional[str] = None
+    user_id: Optional[int] = None
+    phone_e164: Optional[str] = None
 
 
 @dataclass
@@ -516,12 +518,26 @@ class LiveKitVoiceSession:
 
     def _access(self):
         """Guest unless the signed token said this caller finished OTP.
-        The phone number is not carried, so the hub tool gate would still
-        refuse customer tools here (this session calls none)."""
+        Resolves the verified user's phone_e164 from their user-<id> identity
+        in the local database without exposing the phone number in the JWT."""
         from access import GUEST, AccessContext
 
         if self.settings.access_verified:
-            return AccessContext.verified(None, self.settings.user_name or None, None, self.settings.language or None)
+            uid = self.settings.user_id
+            phone = self.settings.phone_e164
+            ident = self.settings.participant_identity or self._target_identity or ""
+            if uid is None and ident.startswith("user-") and ident[5:].isdigit():
+                uid = int(ident[5:])
+            if not phone and uid is not None:
+                try:
+                    from auth.users import get_user
+
+                    user = get_user(uid)
+                    if user is not None and getattr(user, "phone_e164", None):
+                        phone = user.phone_e164
+                except Exception:
+                    pass
+            return AccessContext.verified(uid, self.settings.user_name or None, phone, self.settings.language or None)
         return GUEST
 
     async def _stream_agent_reply(self, text: str, user_name: Optional[str], language: Optional[str], cancel):
@@ -531,6 +547,13 @@ class LiveKitVoiceSession:
         loop = asyncio.get_running_loop()
         chunks: "asyncio.Queue" = asyncio.Queue()
 
+        def _put(item):
+            try:
+                if not loop.is_closed():
+                    loop.call_soon_threadsafe(chunks.put_nowait, item)
+            except RuntimeError:
+                pass
+
         def _worker():
             generator = None
             try:
@@ -538,9 +561,9 @@ class LiveKitVoiceSession:
                 for chunk in generator:
                     if cancel.is_set():
                         break
-                    loop.call_soon_threadsafe(chunks.put_nowait, chunk)
+                    _put(chunk)
             except Exception as exc:
-                loop.call_soon_threadsafe(chunks.put_nowait, exc)
+                _put(exc)
             finally:
                 close = getattr(generator, "close", None)
                 if close is not None:
@@ -548,7 +571,7 @@ class LiveKitVoiceSession:
                         close()
                     except Exception:
                         pass
-                loop.call_soon_threadsafe(chunks.put_nowait, None)
+                _put(None)
 
         threading.Thread(target=_worker, daemon=True, name="livekit-agent").start()
         while True:
@@ -574,6 +597,13 @@ class LiveKitVoiceSession:
         # would be refused, so speak it as English like server.py's fallback.
         language = language if language in ("en", "si", "ta") else "en"
 
+        def _put_synth(item):
+            try:
+                if not loop.is_closed():
+                    loop.call_soon_threadsafe(synth_events.put_nowait, item)
+            except RuntimeError:
+                pass
+
         def _worker():
             generator = None
             try:
@@ -581,9 +611,9 @@ class LiveKitVoiceSession:
                 for event in generator:
                     if cancel.is_set():
                         break
-                    loop.call_soon_threadsafe(synth_events.put_nowait, event)
+                    _put_synth(event)
             except Exception as exc:
-                loop.call_soon_threadsafe(synth_events.put_nowait, exc)
+                _put_synth(exc)
             finally:
                 close = getattr(generator, "close", None)
                 if close is not None:
@@ -591,7 +621,7 @@ class LiveKitVoiceSession:
                         close()
                     except Exception:
                         pass
-                loop.call_soon_threadsafe(synth_events.put_nowait, None)
+                _put_synth(None)
 
         threading.Thread(target=_worker, daemon=True, name="livekit-tts").start()
         state = _TurnState()

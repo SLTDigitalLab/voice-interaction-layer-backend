@@ -25,7 +25,32 @@
     si: ["si-LK", "si", "en-LK", "en-US"],
     ta: ["ta-LK", "ta", "en-LK", "en-US"],
   };
+  var SI_LUNAR_TO_GREGORIAN = {
+    "දුරුතු": "ජනවාරි",
+    "නවම්": "පෙබරවාරි",
+    "මැදින්": "මාර්තු",
+    "බක්": "අප්‍රේල්",
+    "වෙසක්": "මැයි",
+    "පොසොන්": "ජූනි",
+    "ඇසළ": "ජූලි",
+    "නිකිණි": "අගෝස්තු",
+    "බිනර": "සැප්තැම්බර්",
+    "වප්": "ඔක්තෝබර්",
+    "ඉල්": "නොවැම්බර්",
+    "උඳුවප්": "දෙසැම්බර්",
+  };
   var cache = {};
+
+  function normaliseSinhalaMonths(text, lang) {
+    if (!text || normalise(lang) !== "si") return text;
+    var out = String(text);
+    for (var lunar in SI_LUNAR_TO_GREGORIAN) {
+      if (Object.prototype.hasOwnProperty.call(SI_LUNAR_TO_GREGORIAN, lunar) && out.indexOf(lunar) !== -1) {
+        out = out.split(lunar).join(SI_LUNAR_TO_GREGORIAN[lunar]);
+      }
+    }
+    return out;
+  }
 
   function normalise(lang) {
     var short = String(lang || "").toLowerCase().slice(0, 2);
@@ -107,8 +132,9 @@
       date: function (value, options) {
         var d = toDate(value);
         if (!d) return "";
-        var fmt = build("DateTimeFormat", getLang(), options || { dateStyle: "long" });
-        try { return fmt ? fmt.format(d) : d.toDateString(); } catch (e) { return ""; }
+        var lang = getLang();
+        var fmt = build("DateTimeFormat", lang, options || { dateStyle: "long" });
+        try { return normaliseSinhalaMonths(fmt ? fmt.format(d) : d.toDateString(), lang); } catch (e) { return ""; }
       },
       time: function (value, options) {
         var d = toDate(value);
@@ -119,8 +145,9 @@
       dateTime: function (value, options) {
         var d = toDate(value);
         if (!d) return "";
-        var fmt = build("DateTimeFormat", getLang(), options || { dateStyle: "medium", timeStyle: "short" });
-        try { return fmt ? fmt.format(d) : d.toString(); } catch (e) { return ""; }
+        var lang = getLang();
+        var fmt = build("DateTimeFormat", lang, options || { dateStyle: "medium", timeStyle: "short" });
+        try { return normaliseSinhalaMonths(fmt ? fmt.format(d) : d.toString(), lang); } catch (e) { return ""; }
       },
       // Seconds as m:ss (or h:mm:ss from an hour up), the way the countdowns always read.
       // Digits follow the locale

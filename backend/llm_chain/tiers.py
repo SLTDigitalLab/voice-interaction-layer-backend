@@ -20,6 +20,7 @@ from .errors import MISSING_KEY, SafetyBlocked, TierUnavailable, unavailable_fro
 
 GEMINI = "gemini"
 LIVEKIT = "livekit"
+GPT = "gpt"
 LOCAL = "local"
 
 LOCAL_MODE = "local single agent (Llama via Ollama)"
@@ -190,5 +191,31 @@ class LocalTier(Tier):
             print(f"LLM chain probe (local): {time.perf_counter() - start:.2f}s")
 
 
+class GptTier(Tier):
+    name = GPT
+
+    def __init__(self, agent_factory: Optional[AgentFactory] = None):
+        self._agent_factory = agent_factory
+
+    def label(self) -> str:
+        return "cloud (gpt)"
+
+    def configured(self) -> bool:
+        return bool(config.OPENAI_API_KEY)
+
+    def _open_stream(self, turn: Turn) -> Iterator[str]:
+        system_prompt, message = _cloud_prompts(turn)
+        if self._agent_factory is not None:
+            agent_obj = self._agent_factory(system_prompt)
+        else:
+            from agent import GPTAgent
+
+            agent_obj = GPTAgent(system_prompt=system_prompt)
+        return agent_obj.respond_stream(message)
+
+
 def default_tiers() -> dict[str, Tier]:
-    return {GEMINI: GeminiTier(), LIVEKIT: LiveKitTier(), LOCAL: LocalTier()}
+    tiers: dict[str, Tier] = {GEMINI: GeminiTier(), LIVEKIT: LiveKitTier(), LOCAL: LocalTier()}
+    if GPT in getattr(config, "LLM_CHAIN", ()):
+        tiers[GPT] = GptTier()
+    return tiers

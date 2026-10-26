@@ -68,7 +68,7 @@ class SentenceChunker:
     delay the first word. Same rules as tts.SentenceChunker (reimplemented,
     voicekit does not import the host project)."""
 
-    _BOUNDARY = re.compile(r"(?<=[.!?।])\s+")
+    _BOUNDARY = re.compile(r"(?<=[.!?।])\s+|\n+")
     _CLAUSE_BOUNDARY = re.compile(r"(?<=[,;:])\s+")
     FIRST_CLAUSE_MIN_CHARS = 40
 

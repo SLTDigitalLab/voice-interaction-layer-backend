@@ -417,8 +417,12 @@ class GeminiAgent(ChatAgent):
             raise CloudUnavailableError("GEMINI_API_KEY is not set.")
         if _gemini_client is None:
             from google import genai
+            from google.genai import types
 
-            _gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
+            _gemini_client = genai.Client(
+                api_key=config.GEMINI_API_KEY,
+                http_options=types.HttpOptions(timeout=10000),
+            )
         return _gemini_client
 
     def respond(self, text_input: str) -> str:
@@ -434,16 +438,20 @@ class GeminiAgent(ChatAgent):
         try:
             from google.genai import types
 
+            gen_kwargs = {
+                "system_instruction": self.system_prompt,
+                # No tools are passed, so the SDK's automatic function
+                # calling has nothing to do; disabling it also stops
+                # the warning it logs on every streamed call.
+                "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True),
+            }
+            if not config.CLOUD_REASONING_STAGE and "flash-lite" not in (self.model_name or ""):
+                gen_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+
             stream = self._client().models.generate_content_stream(
                 model=self.model_name,
                 contents=text_input,
-                config=types.GenerateContentConfig(
-                    system_instruction=self.system_prompt,
-                    # No tools are passed, so the SDK's automatic function
-                    # calling has nothing to do; disabling it also stops
-                    # the warning it logs on every streamed call.
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-                ),
+                config=types.GenerateContentConfig(**gen_kwargs),
             )
             for chunk in stream:
                 _raise_if_gemini_blocked(chunk)

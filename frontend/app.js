@@ -1322,8 +1322,19 @@ const logoutButton = document.getElementById("logout-button");
 if (logoutButton) {
   logoutButton.addEventListener("click", () => {
     stopConversation();
+    fetch(`${backendHttpBase()}/verify/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers: authHeaders(),
+    }).catch(() => {
+      /* backend unreachable; the short lived session simply expires */
+    });
     if (sessionToken) {
-      fetch(`${backendHttpBase()}/auth/logout`, { method: "POST", headers: authHeaders() }).catch(() => {
+      fetch(`${backendHttpBase()}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: authHeaders(),
+      }).catch(() => {
         /* backend unreachable; the short lived session simply expires */
       });
     }

@@ -701,6 +701,13 @@ async def _stream_agent_reply(
                 _send_json(websocket, {"type": "status", "state": "thinking", "detail": detail}), loop
             )
 
+    def _put(item):
+        try:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(chunk_queue.put_nowait, item)
+        except RuntimeError:
+            pass
+
     def _worker():
         generator = None
         try:
@@ -708,9 +715,9 @@ async def _stream_agent_reply(
             for chunk in generator:
                 if cancel is not None and cancel.is_set():
                     break  # barge in: stop pulling, which closes the model stream below
-                loop.call_soon_threadsafe(chunk_queue.put_nowait, chunk)
+                _put(chunk)
         except Exception as exc:
-            loop.call_soon_threadsafe(chunk_queue.put_nowait, exc)
+            _put(exc)
         finally:
             close = getattr(generator, "close", None)
             if close is not None:
@@ -718,7 +725,7 @@ async def _stream_agent_reply(
                     close()
                 except Exception:  # noqa: BLE001
                     pass
-            loop.call_soon_threadsafe(chunk_queue.put_nowait, None)
+            _put(None)
 
     threading.Thread(target=_worker, daemon=True).start()
 
@@ -1093,12 +1100,14 @@ async def voice_ws(websocket: WebSocket):
     # answered normally instead.
     awaiting_close_confirmation = False
     pending_seed = None  # the speech that interrupted the last reply (barge in)
+    last_spoken_reply = ""
 
     try:
         while True:
             turn_start = time.time()
             await _send_json(websocket, {"type": "status", "state": "listening"})
 
+            was_barge_in = pending_seed is not None
             final_text, detected_language, session_ended = await _run_one_utterance(
                 websocket, language_hint, vad, voice_holder, seed=pending_seed
             )
@@ -1111,6 +1120,12 @@ async def voice_ws(websocket: WebSocket):
             if _looks_like_transcription_hallucination(final_text):
                 print(f"Turn skipped: transcript '{final_text}' looks like a Whisper hallucination, not a real utterance.")
                 continue
+            if was_barge_in and last_spoken_reply:
+                spoken_words = {w for w in re.findall(r"\w+", last_spoken_reply.lower()) if len(w) > 2}
+                heard_words = [w for w in re.findall(r"\w+", final_text.lower()) if len(w) > 2]
+                if len(heard_words) >= 3 and spoken_words and sum(1 for w in heard_words if w in spoken_words) / len(heard_words) >= 0.75:
+                    print(f"Turn skipped: barge-in transcript '{final_text}' matched speaker echo.")
+                    continue
             reply_start = time.time()
             # Replies (spoken and written) are in the language picked on the
             # first screen, not whatever Whisper guessed from the audio, so
@@ -1156,6 +1171,8 @@ async def voice_ws(websocket: WebSocket):
             reply_text, agent_time, first_audio_at = await _speak_streamed_reply(
                 websocket, final_text, user_name, reply_language, voice_holder["voice_style"], access_context, barge
             )
+            if reply_text:
+                last_spoken_reply = reply_text
             if barge.get("ended"):
                 return
             if barge.get("seed") is not None:

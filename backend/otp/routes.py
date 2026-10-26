@@ -132,8 +132,11 @@ def otp_verify(body: OtpVerifyBody, request: Request):
         user = service.verify_otp(body.challenge_id, body.code, client_ip(request))
     except service.OtpError as error:
         return _failure(error, lang)
-    # Same token, audience, lifetime and cookie as POST /auth/verify.
-    token, expires_at = issue_token(str(user.id), AUDIENCE_USER, config.USER_SESSION_MINUTES)
+    # Same token, audience, lifetime and cookie as POST /auth/verify, plus the
+    # "otp" authentication method reference so verified customer tools unlock.
+    token, expires_at = issue_token(
+        str(user.id), AUDIENCE_USER, config.USER_SESSION_MINUTES, extra={"amr": ["otp"]}
+    )
     response = JSONResponse(
         content={"display_name": user.display_name, "token": token, "expires_at": expires_at}, headers=_NO_STORE
     )

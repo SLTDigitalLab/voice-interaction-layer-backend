@@ -403,7 +403,7 @@ def _synthesize_edge_tts(text_input: str, language: str, voice_style: str):
                 continue
             voice_name = candidate
             try:
-                audio_bytes = asyncio.run(_synthesize())
+                audio_bytes = asyncio.run(asyncio.wait_for(_synthesize(), timeout=8.0))
             except Exception as exc:  # noqa: BLE001  try the older voice, then give up
                 _speech_state["last_error"] = type(exc).__name__ + ": " + str(exc)[:80]
                 audio_bytes = b""
@@ -549,7 +549,7 @@ class SentenceChunker:
     writing all of it. Only the first: cutting every sentence at commas
     would make the voice pause unnaturally all the way through."""
 
-    _BOUNDARY = re.compile(r"(?<=[.!?।])\s+")
+    _BOUNDARY = re.compile(r"(?<=[.!?।])\s+|\n+")
     _CLAUSE_BOUNDARY = re.compile(r"(?<=[,;:])\s+")
     FIRST_CLAUSE_MIN_CHARS = 40
 

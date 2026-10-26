@@ -52,7 +52,10 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import anyio
-import httpx2
+try:
+    import httpx2
+except ModuleNotFoundError:
+    import httpx as httpx2  # type: ignore[no-redef]
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
@@ -535,7 +538,10 @@ class HubClient:
 
 
 def _page(cursor: str):
-    import mcp_types as types
+    try:
+        import mcp_types as types
+    except ModuleNotFoundError:
+        from mcp import types  # type: ignore[no-redef]
 
     return types.PaginatedRequestParams(cursor=cursor)
 
