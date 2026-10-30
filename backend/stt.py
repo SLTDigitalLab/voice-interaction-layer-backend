@@ -124,7 +124,9 @@ def warm_up() -> None:
     silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
     for size in filter(None, [config.LOCAL_WHISPER_MODEL_SIZE, config.STT_ACCURATE_MODEL]):
         try:
-            segments, _info = _get_local_model(size).transcribe(silence, language="en")
+            segments, _info = _get_local_model(size).transcribe(
+                silence, language="en", beam_size=1, temperature=0.0, vad_filter=True
+            )
             list(segments)
         except Exception as exc:
             # The larger model is optional (it may need a download that is
@@ -133,7 +135,7 @@ def warm_up() -> None:
             print(f"STT warm up: model '{size}' not available ({exc}).")
     if sinhala_model_ready():
         try:
-            list(_get_sinhala_model().transcribe(silence, language="si")[0])
+            _run_sinhala(silence)
         except Exception as exc:  # noqa: BLE001
             print(f"STT warm up: the Sinhala model is not usable ({exc}).")
     else:

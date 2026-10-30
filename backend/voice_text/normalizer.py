@@ -371,6 +371,13 @@ def _units(text: str, lang: str, L: dict) -> str:
     return rx.sub(sub, text)
 
 
+_QTY_AFTER_RX = re.compile(
+    r"^\s*(?:rupees?|cents?|gigabytes?|megabytes?|kilobytes?|percent|units?|රුපියල්|ශත|ගිගාබයිට්|මෙගාබයිට්|ரூபாய்|சதம்|ஜிகாபைட்|மெகாபைட்|சதவீதம்)\b",
+    re.I,
+)
+_QTY_BEFORE_RX = re.compile(r"(?:රුපියල්|ශත|සියයට|ரூபாய்|சதம்)\s*$", re.I)
+
+
 def _numbers(text: str, lang: str, L: dict) -> str:
     ctx_words = [re.escape(str(w)) for w in (L.get("digit_context") or [])]
     ctx_rx = re.compile(r"(?:^|[^A-Za-z])(?:" + "|".join(ctx_words) + r")[\s:#-]*$", re.I) if ctx_words else None
@@ -389,10 +396,12 @@ def _numbers(text: str, lang: str, L: dict) -> str:
         if len(i) > 15:
             return _digit_words(i, L) + ((" " + L["point"] + " " + _digit_words(f, L)) if f else "")
         force = False
+        before = m.string[max(0, m.start() - 24): m.start()]
+        after = m.string[m.end(): m.end() + 24]
         if ctx_rx and "," not in raw and f is None:
-            before = m.string[max(0, m.start() - 24): m.start()]
             force = bool(ctx_rx.search(before))
-        return _say_number(i, f, lang, L, force_digits=force, year_ok=("," not in raw), quantity=("," in raw))
+        is_qty = ("," in raw) or bool(_QTY_AFTER_RX.search(after)) or bool(_QTY_BEFORE_RX.search(before))
+        return _say_number(i, f, lang, L, force_digits=force, year_ok=not is_qty, quantity=is_qty)
 
     return rx.sub(sub, text)
 

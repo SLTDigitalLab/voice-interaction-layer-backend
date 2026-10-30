@@ -23,7 +23,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 import anyio
-import httpx2
+try:
+    import httpx2
+except ModuleNotFoundError:
+    import httpx as httpx2  # type: ignore[no-redef]
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client

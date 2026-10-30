@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from tool_agent import messages as tool_messages
+from tool_agent import scrub as tool_scrub
 
 from . import errors
 from .config import DEFAULT_MODEL, LiveSessionConfig
@@ -155,9 +156,29 @@ async def handle(
                 if event.final:
                     turns += 1
                     await _json(websocket, {"type": "status", "state": "thinking"})
+                    if state_changing and getattr(access, "is_verified", False) and (event.text or "").strip():
+                        try:
+                            import confirmations
+
+                            if confirmations.pending_for(access) is not None:
+                                hit = await asyncio.to_thread(confirmations.intercept, access, event.text, lang)
+                                if hit is not None and getattr(hit, "text", ""):
+                                    await _json(websocket, {"type": "agent_response", "text": hit.text, "mode": MODE})
+                        except Exception:
+                            pass
             elif isinstance(event, OutputText):
                 if event.final:
-                    await _json(websocket, {"type": "agent_response", "text": event.text, "mode": MODE})
+                    cleaned = event.text or ""
+                    try:
+                        cleaned, dropped = tool_scrub.clean_text(
+                            cleaned, "", tool_messages._dial().values()
+                        )
+                        if dropped:
+                            dial_line = tool_messages.dial_text("tool_agent.not_found", lang)
+                            cleaned = f"{cleaned} {dial_line}".strip() if cleaned.strip() else dial_line
+                    except Exception:
+                        cleaned = event.text or ""
+                    await _json(websocket, {"type": "agent_response", "text": cleaned, "mode": MODE})
                 else:
                     await _json(websocket, {"type": "agent_response_chunk", "text": event.text})
             elif isinstance(event, ToolActivity):

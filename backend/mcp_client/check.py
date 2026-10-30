@@ -38,7 +38,10 @@ _BACKEND = Path(__file__).resolve().parent.parent
 if str(_BACKEND) not in sys.path:  # `python -m mcp_client.check` from backend/ already has it
     sys.path.insert(0, str(_BACKEND))
 
-import httpx2  # noqa: E402
+try:
+    import httpx2  # noqa: E402
+except ModuleNotFoundError:
+    import httpx as httpx2  # type: ignore[no-redef]  # noqa: E402
 
 import config  # noqa: E402
 from mcp_client.client import HubClient  # noqa: E402

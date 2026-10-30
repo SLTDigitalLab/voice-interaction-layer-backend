@@ -74,6 +74,9 @@ def _make_tts(model: str, voice: Optional[str], language: str, settings):
     )
 
 
+_DEFAULT_MAKE_TTS = _make_tts
+
+
 def _pump(tts_obj, text: str, out: "queue.Queue", cancel: threading.Event) -> None:
     async def run():
         stream = tts_obj.synthesize(text)
@@ -110,10 +113,11 @@ def stream(text: str, language: str, voice: str, settings, cancel: threading.Eve
     missing = missing_credentials(settings)
     if missing:
         raise ProviderUnavailable("LiveKit Inference not configured: missing " + ", ".join(missing))
-    try:
-        import livekit.agents  # noqa: F401
-    except Exception as exc:
-        raise ProviderUnavailable("livekit-agents is not installed") from exc
+    if _make_tts is _DEFAULT_MAKE_TTS:
+        try:
+            import livekit.agents  # noqa: F401
+        except Exception as exc:
+            raise ProviderUnavailable("livekit-agents is not installed") from exc
     entries = [e for e in lookup("livekit_inference", language, voice) if e]
     if not entries:
         raise ProviderUnavailable(f"no LiveKit Inference voice configured for {language}")

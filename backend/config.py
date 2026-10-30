@@ -21,7 +21,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+if (
+    "PYTEST_CURRENT_TEST" not in os.environ
+    and os.environ.get("JWT_SECRET") != "test-jwt-secret-not-for-production-0123456789abcdef"
+):
+    load_dotenv()
 
 # Cloud LLM (multi agent orchestration when reachable)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -32,7 +36,10 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 CLOUD_LLM_PROVIDER = os.environ.get("CLOUD_LLM_PROVIDER", "livekit").strip().lower()
 # A "-latest" alias follows Google's current stable model; pinned names are retired (gemini-2.5-flash answers 404
 # "no longer available to new users" on 2026-10-16). Checked against models.list for the AI Studio key.
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest").strip()
+_raw_gemini_model = os.environ.get("GEMINI_MODEL", "gemini-flash-latest").strip()
+if _raw_gemini_model.startswith("gemini/"):
+    _raw_gemini_model = _raw_gemini_model.split("/", 1)[1]
+GEMINI_MODEL = _raw_gemini_model or "gemini-flash-latest"
 # Gemini Live (native speech to speech, tier 1 of the voice router). This is a
 # different model family from GEMINI_MODEL above: a Live model such as
 # gemini-3.8-live cannot be used for text generation and the other way round.
@@ -81,6 +88,11 @@ def _env_bool(name: str, default: bool) -> bool:
     if not value:
         return default
     return value in ("1", "true", "yes")
+
+
+# On /ws/voice, barge-in is enabled by default. To disable interruption on
+# open speakers if needed, set VOICE_WS_BARGE_IN=false.
+VOICE_WS_BARGE_IN = _env_bool("VOICE_WS_BARGE_IN", True)
 
 
 def _env_int(name: str, default: int) -> int:

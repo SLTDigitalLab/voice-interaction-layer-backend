@@ -650,10 +650,17 @@ window.addEventListener("mousemove", (event) => {
 });
 
 function setStatus(state) {
+  const allowBargeIn =
+    localStorage.getItem("bargeInDisabled") !== "true" &&
+    localStorage.getItem("bargeInHeadphones") !== "false";
+  if (state === "listening" && !audioSendAllowed) {
+    sendBuffer = new Float32Array(0);
+    resampleRemainder = new Float32Array(0);
+  }
   audioSendAllowed =
     state === "listening" ||
     state === "calibrating" ||
-    (state === "speaking" && bargeInReady && !bargeInBlocked && Boolean(socket) && !livekitSession && !liveSession);
+    (allowBargeIn && state === "speaking" && bargeInReady && !bargeInBlocked && Boolean(socket) && !livekitSession && !liveSession);
   // Drives the flat CSS avatar's mouth/ring/waveform styling (see style.css's
   // .bot.state-* rules) by replacing only the state-* class, so the has-3d
   // class bot3d.js adds (see bot3d.js) survives every status change.
@@ -1322,8 +1329,19 @@ const logoutButton = document.getElementById("logout-button");
 if (logoutButton) {
   logoutButton.addEventListener("click", () => {
     stopConversation();
+    fetch(`${backendHttpBase()}/verify/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers: authHeaders(),
+    }).catch(() => {
+      /* backend unreachable; the short lived session simply expires */
+    });
     if (sessionToken) {
-      fetch(`${backendHttpBase()}/auth/logout`, { method: "POST", headers: authHeaders() }).catch(() => {
+      fetch(`${backendHttpBase()}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: authHeaders(),
+      }).catch(() => {
         /* backend unreachable; the short lived session simply expires */
       });
     }
